@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     http_timeout_seconds: float = Field(default=15.0, alias="HTTP_TIMEOUT_SECONDS")
     sec_user_agent: str = Field(default="Atlas Financial Assistant", alias="SEC_USER_AGENT")
     sec_contact_email: str = Field(default="contact@example.com", alias="SEC_CONTACT_EMAIL")
-    database_url: str = Field(default="sqlite+aiosqlite:///./atlas.db", alias="DATABASE_URL")
+    database_url: str = Field(default="postgresql+asyncpg://postgres:YOUR_PASSWORD@localhost:5432/AtlasAI", alias="DATABASE_URL")
     app_env: str = Field(default="development", alias="APP_ENV")
     conversation_context_limit: int = Field(default=12, alias="CONVERSATION_CONTEXT_LIMIT")
 
