@@ -5,18 +5,56 @@ Atlas is a Telegram-first AI financial research assistant built with FastAPI.
 This first milestone implements:
 
 ```text
-Telegram webhook -> SQLite persistence -> Gemini response -> Telegram reply
+Telegram webhook -> PostgreSQL persistence -> Gemini response -> Telegram reply
 ```
 
 The code keeps Telegram, LLM, finance tools, and persistence isolated so watchlists, memory, alerts, voice, images, and external integrations can be added later without rewriting the webhook.
 
 ## Requirements
 
-- Python 3.12+
-- SQLite
-- A Telegram bot token
-- A Gemini API key
-- A Finnhub API key
+- Python 3.10+
+- PostgreSQL
+- Telegram Bot Token (from BotFather)
+- Finnhub API Key
+- NewsAPI Key
+- Google Gemini API Key
+
+## Database Relationships
+
+The database maintains the following primary relationships for managing users and context:
+
+```text
+User
+ |
+ +-- UserPreference (1:1) - Stores user role, timezone, and flexible interests.
+ |
+ +-- Watchlist (1:N)      - Stores specific stock ticker symbols the user is tracking.
+ |
+ +-- Messages (1:N)       - Stores conversation history with the agent.
+```
+
+## User Preferences
+
+Atlas persists information about you to personalize its research. The `UserPreference` record stores:
+- **Role**: Your professional context (e.g., Investor, Analyst).
+- **Interests**: A flexible JSON list of topics, sectors, or themes you care about (e.g., `["AI", "Semiconductors"]`).
+
+The agent uses these preferences as context when you ask broad questions like "What's happening today?", enabling it to prioritize news and data about your areas of interest.
+
+## Watchlists
+
+You can explicitly ask Atlas to track specific companies. Unlike general interests, a Watchlist contains explicit stock ticker symbols (e.g., `NVDA`, `MSFT`). Watchlists are managed via natural language.
+
+### Examples
+
+You can manage your preferences and watchlists using natural language without any slash commands:
+
+* **Update role**: *"I'm an analyst interested in AI."*
+* **Add to watchlist**: *"Track Nvidia."*
+* **Add another company**: *"Also track AMD."*
+* **Remove from watchlist**: *"Stop tracking Nvidia."*
+* **Check watchlist**: *"What am I following?"*
+* **Check preferences**: *"What are my interests?"*
 
 ## Create A Telegram Bot
 
@@ -57,11 +95,11 @@ TELEGRAM_WEBHOOK_SECRET=
 GEMINI_API_KEY=
 LLM_MODEL=gemini-2.5-flash
 FINNHUB_API_KEY=
-DATABASE_URL=sqlite+aiosqlite:///./atlas.db
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost/atlas
 APP_ENV=development
 ```
 
-The default `DATABASE_URL` creates `atlas.db` in the project root. Use an absolute SQLite path if you deploy from a process manager with a different working directory.
+The default `DATABASE_URL` connects to a local `atlas` database. Create this database in your PostgreSQL instance before running migrations.
 
 ## Create A Virtual Environment
 
@@ -89,7 +127,7 @@ For production deployment, install runtime dependencies only:
 python -m pip install -r requirements.txt
 ```
 
-## Prepare SQLite
+## Prepare PostgreSQL
 
 Run migrations from the activated virtual environment:
 
@@ -97,7 +135,7 @@ Run migrations from the activated virtual environment:
 alembic upgrade head
 ```
 
-This creates the SQLite database file if it does not already exist.
+This applies the schema to the PostgreSQL database specified in `DATABASE_URL`. Make sure the database exists.
 
 ## Run The API
 
