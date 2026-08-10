@@ -26,8 +26,12 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Atlas Financial Assistant API", lifespan=lifespan)
 
 @app.get("/health")
-async def health() -> dict[str, str]:
-    return {"status": "ok"}
+async def health() -> dict[str, str | bool]:
+    global scheduler
+    return {
+        "status": "ok",
+        "scheduler_running": scheduler._running if scheduler else False
+    }
 
 
 app.include_router(telegram_router)

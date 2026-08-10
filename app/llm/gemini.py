@@ -1,7 +1,10 @@
 import asyncio
 import json
 import logging
+import warnings
 from typing import Any
+
+warnings.filterwarnings("ignore", message=".*MALFORMED_RESPONSE.*", category=UserWarning)
 
 from google import genai
 from google.genai import types
