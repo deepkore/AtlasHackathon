@@ -6,14 +6,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent.agent import Agent
 from app.agent.tools import build_tools
 from app.config import Settings, get_settings
-from app.database.repositories import MessageRepository
+from app.database.repositories import MessageRepository, UserPreferenceRepository, WatchlistRepository, ScheduledTaskRepository
 from app.database.session import get_db_session
 from app.finance.finnhub import FinnhubClient
 from app.finance.news import NewsClient
 from app.finance.sec import SECClient
 from app.llm.gemini import GeminiProvider
 from app.services.conversation import ConversationService
+from app.services.preferences import PreferenceService
 from app.services.telegram import TelegramClient
+from app.services.watchlist import WatchlistService
 
 
 def get_telegram_client(settings: Settings = Depends(get_settings)) -> TelegramClient:
@@ -29,10 +31,17 @@ async def get_agent(
     settings: Settings,
 ) -> Agent:
     message_repository = MessageRepository(session)
+    user_preference_repository = UserPreferenceRepository(session)
+    watchlist_repository = WatchlistRepository(session)
+    task_repository = ScheduledTaskRepository(session)
+    
     conversation_service = ConversationService(
         message_repository=message_repository,
         context_limit=settings.conversation_context_limit,
     )
+    preference_service = PreferenceService(user_preference_repository)
+    watchlist_service = WatchlistService(watchlist_repository)
+    
     finnhub_client = FinnhubClient(api_key=settings.finnhub_api_key, timeout=settings.http_timeout_seconds)
     sec_client = SECClient(
         timeout=settings.http_timeout_seconds,
@@ -42,7 +51,16 @@ async def get_agent(
     return Agent(
         llm_provider=get_llm_provider(settings),
         conversation_service=conversation_service,
-        tools=build_tools(finnhub_client=finnhub_client, sec_client=sec_client, news_client=news_client),
+        preference_service=preference_service,
+        watchlist_service=watchlist_service,
+        tools=build_tools(
+            finnhub_client=finnhub_client, 
+            sec_client=sec_client, 
+            news_client=news_client,
+            preference_service=preference_service,
+            watchlist_service=watchlist_service,
+            task_repo=task_repository
+        ),
         max_tool_calls=settings.max_tool_calls,
     )
 

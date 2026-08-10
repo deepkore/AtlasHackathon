@@ -8,7 +8,7 @@ from app.main import app
 
 @pytest.fixture
 async def test_session_factory():
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:", connect_args={"check_same_thread": False})
+    engine = create_async_engine("postgresql+asyncpg://postgres:YOUR_PASSWORD@localhost:5432/AtlasAI_test")
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
 

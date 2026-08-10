@@ -7,10 +7,12 @@ from typing import Any
 from app.finance.finnhub import FinnhubClient, FinnhubError
 from app.finance.news import NewsClient, NewsError
 from app.finance.sec import SECClient, SECError
+from app.services.preferences import PreferenceService
+from app.services.watchlist import WatchlistService
 
 logger = logging.getLogger(__name__)
 
-ToolHandler = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
+ToolHandler = Callable[[dict[str, Any], int], Awaitable[dict[str, Any]]]
 
 
 @dataclass(frozen=True)
@@ -23,8 +25,8 @@ class ToolDefinition:
     def declaration(self) -> dict[str, Any]:
         return {"name": self.name, "description": self.description, "parameters": self.input_schema}
 
-    async def run(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        return await self.handler(arguments)
+    async def run(self, arguments: dict[str, Any], user_id: int) -> dict[str, Any]:
+        return await self.handler(arguments, user_id)
 
 
 class ToolRegistry:
@@ -51,7 +53,7 @@ class ToolRegistry:
             return {"error": True, "message": "The requested tool is unavailable."}
         started = time.perf_counter()
         try:
-            result = await tool.run(arguments)
+            result = await tool.run(arguments, user_id)
             duration_ms = round((time.perf_counter() - started) * 1000, 2)
             logger.info(
                 "agent_tool_executed",
@@ -99,7 +101,7 @@ def _missing(message: str) -> dict[str, Any]:
 def build_tool_registry(finnhub_client: FinnhubClient, sec_client: SECClient, news_client: NewsClient) -> ToolRegistry:
     registry = ToolRegistry()
 
-    async def get_stock_quote(arguments: dict[str, Any]) -> dict[str, Any]:
+    async def get_stock_quote(arguments: dict[str, Any], user_id: int) -> dict[str, Any]:
         symbol = _string_arg(arguments, "symbol").upper()
         if not symbol:
             return _missing("A stock symbol is required.")
@@ -108,7 +110,7 @@ def build_tool_registry(finnhub_client: FinnhubClient, sec_client: SECClient, ne
         except FinnhubError:
             return {"error": True, "message": "The stock data service is temporarily unavailable."}
 
-    async def get_company_profile(arguments: dict[str, Any]) -> dict[str, Any]:
+    async def get_company_profile(arguments: dict[str, Any], user_id: int) -> dict[str, Any]:
         symbol = _string_arg(arguments, "symbol").upper()
         if not symbol:
             return _missing("A stock symbol is required.")
@@ -117,7 +119,7 @@ def build_tool_registry(finnhub_client: FinnhubClient, sec_client: SECClient, ne
         except FinnhubError:
             return {"error": True, "message": "The company profile service is temporarily unavailable."}
 
-    async def get_company_news(arguments: dict[str, Any]) -> dict[str, Any]:
+    async def get_company_news(arguments: dict[str, Any], user_id: int) -> dict[str, Any]:
         symbol = _string_arg(arguments, "symbol").upper()
         if not symbol:
             return _missing("A stock symbol is required.")
@@ -133,7 +135,7 @@ def build_tool_registry(finnhub_client: FinnhubClient, sec_client: SECClient, ne
         except FinnhubError:
             return {"error": True, "message": "The company news service is temporarily unavailable."}
 
-    async def get_company_earnings(arguments: dict[str, Any]) -> dict[str, Any]:
+    async def get_company_earnings(arguments: dict[str, Any], user_id: int) -> dict[str, Any]:
         symbol = _string_arg(arguments, "symbol").upper()
         if not symbol:
             return _missing("A stock symbol is required.")
@@ -142,7 +144,7 @@ def build_tool_registry(finnhub_client: FinnhubClient, sec_client: SECClient, ne
         except FinnhubError:
             return {"error": True, "message": "The earnings service is temporarily unavailable."}
 
-    async def get_company_filings(arguments: dict[str, Any]) -> dict[str, Any]:
+    async def get_company_filings(arguments: dict[str, Any], user_id: int) -> dict[str, Any]:
         symbol = _string_arg(arguments, "symbol") or _string_arg(arguments, "ticker")
         if not symbol:
             return _missing("A ticker symbol is required.")
@@ -151,7 +153,7 @@ def build_tool_registry(finnhub_client: FinnhubClient, sec_client: SECClient, ne
         except SECError:
             return {"error": True, "message": "SEC filing data is temporarily unavailable."}
 
-    async def get_latest_sec_filing(arguments: dict[str, Any]) -> dict[str, Any]:
+    async def get_latest_sec_filing(arguments: dict[str, Any], user_id: int) -> dict[str, Any]:
         symbol = _string_arg(arguments, "symbol")
         form = _string_arg(arguments, "form").upper()
         if not symbol or not form:
@@ -161,7 +163,7 @@ def build_tool_registry(finnhub_client: FinnhubClient, sec_client: SECClient, ne
         except SECError:
             return {"error": True, "message": "SEC filing data is temporarily unavailable."}
 
-    async def get_company_facts(arguments: dict[str, Any]) -> dict[str, Any]:
+    async def get_company_facts(arguments: dict[str, Any], user_id: int) -> dict[str, Any]:
         symbol = _string_arg(arguments, "symbol")
         if not symbol:
             return _missing("A stock symbol is required.")
@@ -170,7 +172,7 @@ def build_tool_registry(finnhub_client: FinnhubClient, sec_client: SECClient, ne
         except SECError:
             return {"error": True, "message": "SEC company facts are temporarily unavailable."}
 
-    async def search_financial_news(arguments: dict[str, Any]) -> dict[str, Any]:
+    async def search_financial_news(arguments: dict[str, Any], user_id: int) -> dict[str, Any]:
         query = _string_arg(arguments, "query")
         if not query:
             return _missing("A news search query is required.")
@@ -241,5 +243,24 @@ def build_tool_registry(finnhub_client: FinnhubClient, sec_client: SECClient, ne
     return registry
 
 
-def build_tools(finnhub_client: FinnhubClient, sec_client: SECClient, news_client: NewsClient) -> list[ToolDefinition]:
-    return build_tool_registry(finnhub_client, sec_client, news_client).all()
+def build_tools(
+    finnhub_client: FinnhubClient, 
+    sec_client: SECClient, 
+    news_client: NewsClient,
+    preference_service: PreferenceService,
+    watchlist_service: WatchlistService,
+    task_repo: Any = None,
+) -> list[ToolDefinition]:
+    from app.agent.preference_tools import build_preference_tools
+    from app.agent.watchlist_tools import build_watchlist_tools
+    from app.agent.scheduling_tools import build_scheduling_tools
+
+    registry = build_tool_registry(finnhub_client, sec_client, news_client)
+    tools = registry.all()
+    tools.extend(build_preference_tools(preference_service))
+    tools.extend(build_watchlist_tools(watchlist_service))
+    
+    if task_repo is not None:
+        tools.extend(build_scheduling_tools(task_repo))
+        
+    return tools

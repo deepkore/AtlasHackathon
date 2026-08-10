@@ -55,7 +55,7 @@ class FakeTool:
     def declaration(self):
         return {"name": self.name, "description": self.description, "parameters": self.parameters}
 
-    async def run(self, arguments):
+    async def run(self, arguments, user_id):
         return {"symbol": arguments["symbol"], "source": "test", "data": {"c": 100}}
 
 
@@ -67,17 +67,28 @@ class FakeNewsTool:
     def declaration(self):
         return {"name": self.name, "description": self.description, "parameters": self.parameters}
 
-    async def run(self, arguments):
+    async def run(self, arguments, user_id):
         return {"symbol": arguments["symbol"], "articles": [{"headline": "Good news"}]}
 
 
 async def test_agent_flow(test_session):
-    from app.database.repositories import MessageRepository, UserRepository
+    from app.database.repositories import MessageRepository, UserRepository, UserPreferenceRepository, WatchlistRepository
     from app.schemas.telegram import TelegramUser
+    from app.services.preferences import PreferenceService
+    from app.services.watchlist import WatchlistService
 
     user = await UserRepository(test_session).get_or_create_from_telegram(TelegramUser(id=777))
     conversation_service = ConversationService(MessageRepository(test_session), context_limit=5)
-    agent = Agent(llm_provider=FakeLLM(), conversation_service=conversation_service, tools=[FakeTool()])
+    preference_service = PreferenceService(UserPreferenceRepository(test_session))
+    watchlist_service = WatchlistService(WatchlistRepository(test_session))
+    
+    agent = Agent(
+        llm_provider=FakeLLM(), 
+        conversation_service=conversation_service, 
+        preference_service=preference_service,
+        watchlist_service=watchlist_service,
+        tools=[FakeTool()]
+    )
 
     response = await agent.respond(user_id=user.id, message="Tell me about NVDA")
 
@@ -87,13 +98,24 @@ async def test_agent_flow(test_session):
 
 
 async def test_agent_multiple_sequential_tool_calls(test_session):
-    from app.database.repositories import MessageRepository, UserRepository
+    from app.database.repositories import MessageRepository, UserRepository, UserPreferenceRepository, WatchlistRepository
     from app.schemas.telegram import TelegramUser
+    from app.services.preferences import PreferenceService
+    from app.services.watchlist import WatchlistService
 
     user = await UserRepository(test_session).get_or_create_from_telegram(TelegramUser(id=778))
     conversation_service = ConversationService(MessageRepository(test_session), context_limit=5)
+    preference_service = PreferenceService(UserPreferenceRepository(test_session))
+    watchlist_service = WatchlistService(WatchlistRepository(test_session))
     llm = MultiToolLLM()
-    agent = Agent(llm_provider=llm, conversation_service=conversation_service, tools=[FakeTool(), FakeNewsTool()])
+    
+    agent = Agent(
+        llm_provider=llm, 
+        conversation_service=conversation_service, 
+        preference_service=preference_service,
+        watchlist_service=watchlist_service,
+        tools=[FakeTool(), FakeNewsTool()]
+    )
 
     response = await agent.respond(user_id=user.id, message="Why is NVDA up?")
 
@@ -106,14 +128,21 @@ async def test_agent_multiple_sequential_tool_calls(test_session):
 
 
 async def test_agent_max_tool_iteration_protection(test_session):
-    from app.database.repositories import MessageRepository, UserRepository
+    from app.database.repositories import MessageRepository, UserRepository, UserPreferenceRepository, WatchlistRepository
     from app.schemas.telegram import TelegramUser
+    from app.services.preferences import PreferenceService
+    from app.services.watchlist import WatchlistService
 
     user = await UserRepository(test_session).get_or_create_from_telegram(TelegramUser(id=779))
     conversation_service = ConversationService(MessageRepository(test_session), context_limit=5)
+    preference_service = PreferenceService(UserPreferenceRepository(test_session))
+    watchlist_service = WatchlistService(WatchlistRepository(test_session))
+    
     agent = Agent(
         llm_provider=LoopingLLM(),
         conversation_service=conversation_service,
+        preference_service=preference_service,
+        watchlist_service=watchlist_service,
         tools=[FakeTool()],
         max_tool_calls=2,
     )

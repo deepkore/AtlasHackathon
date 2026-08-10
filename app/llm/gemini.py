@@ -33,6 +33,13 @@ class GeminiProvider(LLMProvider):
             logger.exception("Gemini generation failed")
             raise GeminiError("LLM response is unavailable") from exc
         return response
+        
+    async def generate_structured(self, messages: list[ConversationMessage], schema: type) -> Any:
+        try:
+            return await asyncio.to_thread(self._generate_structured_sync, messages, schema)
+        except Exception as exc:
+            logger.exception("Gemini structured generation failed")
+            raise GeminiError("LLM structured response is unavailable") from exc
 
     def _generate_sync(self, messages: list[ConversationMessage], tools: list[dict]) -> LLMResponse:
         system_text = "\n\n".join(message.content for message in messages if message.role == "system")
@@ -67,6 +74,35 @@ class GeminiProvider(LLMProvider):
                     text_parts.append(part.text)
 
         return LLMResponse(content="\n".join(text_parts).strip(), tool_calls=tool_calls)
+
+    def _generate_structured_sync(self, messages: list[ConversationMessage], schema: type) -> Any:
+        system_text = "\n\n".join(message.content for message in messages if message.role == "system")
+        contents = [
+            self._message_to_content(message)
+            for message in messages
+            if message.role != "system"
+        ]
+        config_kwargs: dict[str, Any] = {
+            "response_mime_type": "application/json",
+            "response_schema": schema
+        }
+        if system_text:
+            config_kwargs["system_instruction"] = system_text
+
+        response = self.client.models.generate_content(
+            model=self.model,
+            contents=contents,
+            config=types.GenerateContentConfig(**config_kwargs),
+        )
+        
+        if not response.text:
+            raise GeminiError("Empty structured response")
+            
+        try:
+            return schema.model_validate_json(response.text)
+        except Exception as exc:
+            logger.error("Failed to parse structured LLM response: %s", response.text)
+            raise GeminiError("Invalid structured response format") from exc
 
     @staticmethod
     def _tool_to_declaration(tool: dict) -> types.FunctionDeclaration:

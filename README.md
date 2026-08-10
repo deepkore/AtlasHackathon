@@ -164,7 +164,44 @@ Install dev dependencies, then run:
 ```bash
 pytest
 ```
+## Milestone 4: Scheduled Briefings & Proactive Intelligence
 
+Atlas is now proactive. Users can schedule daily morning briefings or evening summaries using natural language.
+
+### Scheduled Briefing Architecture
+- **Scheduler**: A lightweight background task runs inside `main.py` that periodically checks for due scheduled tasks in the database.
+- **BriefingService**: When a task is due, this service retrieves the user's preferences and watchlist, gathers the latest news and SEC filings, filters out previously sent items, and uses Gemini's structured output to decide if the information is meaningful enough to send. If `should_send` is true and the importance score passes the threshold, it sends a Telegram message.
+- **Timezone Handling**: Scheduled tasks are stored with the user's IANA timezone (e.g. `America/New_York`). The scheduler calculates the exact UTC time for the next execution (`next_run_at`) based on this timezone.
+- **Notification History**: Sent events (articles, filings) are recorded in the `notification_history` table to prevent sending duplicate information in successive briefings.
+
+### Supported Briefing Types
+- `morning_briefing`: Generally sent early in the day.
+- `evening_summary`: Generally sent after market close.
+
+### Natural Language Examples
+Users can schedule briefings naturally in the Telegram chat:
+- "Send me a morning briefing every day at 8:30 AM."
+- "Give me an evening market summary every weekday at 6 PM."
+- "Stop my morning briefing."
+- "Show me my scheduled briefings."
+
+### Environment Variables
+New variables have been introduced:
+- `BRIEFING_IMPORTANCE_THRESHOLD`: Minimum Gemini importance score to send a briefing (e.g. `0.75`).
+- `SCHEDULER_ENABLED`: Boolean to enable/disable the background scheduler (default: `true`).
+- `SCHEDULER_POLL_INTERVAL_SECONDS`: How often the scheduler checks for due tasks (default: `30`). **This does not poll financial APIs.**
+- `MAX_BRIEFING_ARTICLES` / `MAX_WATCHLIST_ITEMS_PER_BRIEFING`: Limits for retrieved data per briefing.
+
+### Database Migrations
+Migrations have been generated for the `scheduled_tasks` and `notification_history` tables. Ensure you run:
+```bash
+alembic upgrade head
+```
+
+### Deployment Considerations
+- **Local Development**: The built-in scheduler in FastAPI's lifespan is sufficient.
+- **Production**: If deploying multiple instances (horizontal scaling), the current simple `SELECT ... FOR UPDATE SKIP LOCKED` inside the `ScheduledTaskRepository` allows basic concurrency control, preventing multiple instances from executing the same task.
+- **Note**: Continuous financial API polling and event-triggered alerts (like 7% movement alerts or real-time price monitoring) are explicitly **not implemented** yet. Financial APIs are only queried when a user's scheduled briefing executes.
 Tests mock Telegram, Gemini, and Finnhub. They do not make real external API calls.
 
 ## Test The Telegram Webhook Locally

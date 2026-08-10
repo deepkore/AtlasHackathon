@@ -23,6 +23,13 @@ class Settings(BaseSettings):
     database_url: str = Field(default="postgresql+asyncpg://postgres:YOUR_PASSWORD@localhost:5432/AtlasAI", alias="DATABASE_URL")
     app_env: str = Field(default="development", alias="APP_ENV")
     conversation_context_limit: int = Field(default=12, alias="CONVERSATION_CONTEXT_LIMIT")
+    
+    # Milestone 4 Configuration
+    briefing_importance_threshold: float = Field(default=0.75, alias="BRIEFING_IMPORTANCE_THRESHOLD")
+    scheduler_enabled: bool = Field(default=True, alias="SCHEDULER_ENABLED")
+    scheduler_poll_interval_seconds: int = Field(default=30, alias="SCHEDULER_POLL_INTERVAL_SECONDS")
+    max_briefing_articles: int = Field(default=10, alias="MAX_BRIEFING_ARTICLES")
+    max_watchlist_items_per_briefing: int = Field(default=20, alias="MAX_WATCHLIST_ITEMS_PER_BRIEFING")
 
     model_config = SettingsConfigDict(env_file=ENV_FILE, env_file_encoding="utf-8-sig", extra="ignore")
 

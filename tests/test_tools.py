@@ -32,7 +32,7 @@ class FakeNews:
 
 
 async def test_tool_registry():
-    async def handler(arguments):
+    async def handler(arguments, user_id):
         return {"ok": arguments["ok"]}
 
     registry = ToolRegistry()

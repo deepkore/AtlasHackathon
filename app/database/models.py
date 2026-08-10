@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
-from sqlalchemy.ext.mutable import MutableDict
+from sqlalchemy.ext.mutable import MutableDict, MutableList
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.session import Base
@@ -31,6 +31,8 @@ class User(TimestampMixin, Base):
     preferences: Mapped["UserPreference | None"] = relationship(back_populates="user", cascade="all, delete-orphan")
     watchlist: Mapped[list["Watchlist"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     alerts: Mapped[list["Alert"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    scheduled_tasks: Mapped[list["ScheduledTask"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    notifications: Mapped[list["NotificationHistory"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class Message(Base):
@@ -51,7 +53,7 @@ class UserPreference(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
     role: Mapped[str | None] = mapped_column(String(255))
-    interests: Mapped[dict[str, Any]] = mapped_column(MutableDict.as_mutable(json_type), default=dict, nullable=False)
+    interests: Mapped[list[str]] = mapped_column(MutableList.as_mutable(JSON), default=list, nullable=False)
     notification_time: Mapped[str | None] = mapped_column(String(32))
     timezone: Mapped[str | None] = mapped_column(String(64))
 
@@ -83,3 +85,35 @@ class Alert(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     user: Mapped[User] = relationship(back_populates="alerts")
+
+
+class ScheduledTask(TimestampMixin, Base):
+    __tablename__ = "scheduled_tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+    task_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    schedule: Mapped[dict[str, Any]] = mapped_column(MutableDict.as_mutable(JSON), default=dict, nullable=False)
+    timezone: Mapped[str | None] = mapped_column(String(64))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    configuration: Mapped[dict[str, Any]] = mapped_column(MutableDict.as_mutable(JSON), default=dict, nullable=False)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+
+    user: Mapped[User] = relationship(back_populates="scheduled_tasks")
+
+
+class NotificationHistory(Base):
+    __tablename__ = "notification_history"
+    __table_args__ = (UniqueConstraint("user_id", "event_key", name="uq_notification_user_event"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+    event_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    notification_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    source_url: Mapped[str | None] = mapped_column(String(1024))
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    user: Mapped[User] = relationship(back_populates="notifications")
